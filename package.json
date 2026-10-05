@@ -63,6 +63,8 @@
     "@commitlint/cli": "^21.2.3",
     "@commitlint/config-conventional": "^21.2.3",
     "@ianvs/prettier-plugin-sort-imports": "^4.7.1",
+    "@semantic-release/changelog": "^7.0.0",
+    "@semantic-release/git": "^11.0.1",
     "@strapi/sdk-plugin": "^6",
     "@strapi/strapi": "^5",
     "@strapi/typescript-utils": "^5",
@@ -73,6 +75,7 @@
     "prettier": "^3.9.9",
     "prettier-plugin-packagejson": "^3.0.2",
     "prettier-plugin-sh": "^0.20.2",
+    "semantic-release": "^25.0.9",
     "typescript": "~5.9.3",
     "vitest": "^5.0.3"
   },

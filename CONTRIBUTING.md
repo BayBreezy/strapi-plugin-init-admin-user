@@ -18,6 +18,12 @@ bun run build     # Strapi Plugin SDK build, then `bun run verify`
 Commits and PR titles follow [Conventional Commits](https://www.conventionalcommits.org).
 A commit-msg hook (commitlint) checks the format locally, and CI checks the PR title.
 
+## Releases
+
+Releases are generated from the commits by [semantic-release](https://semantic-release.gitbook.io) when
+something lands on `main`: `feat:` is a minor release, `fix:` a patch and a `BREAKING CHANGE:` footer a
+major. The workflow needs an `NPM_TOKEN` repository secret.
+
 ## Trying the plugin in a Strapi app
 
 ```bash
