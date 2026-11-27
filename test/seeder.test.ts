@@ -19,7 +19,7 @@ const baseConfig = (overrides: Partial<PluginConfig> = {}): PluginConfig => ({
   ...overrides,
 });
 
-const makeStrapi = ({ users = 0, firstAdmin = true } = {}) => {
+const makeStrapi = ({ users = 0, firstAdmin = true, tokenKind = true } = {}) => {
   const state = { users, roles: [] as { id: number; name: string; code: string }[] };
   const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
   const user = {
@@ -39,10 +39,27 @@ const makeStrapi = ({ users = 0, firstAdmin = true } = {}) => {
       return created;
     }),
   };
+  const apiToken = {
+    exists: vi.fn(async () => false),
+    create: vi.fn(async (attrs: Record<string, unknown>) => ({
+      id: 1,
+      ...attrs,
+      accessKey: 'generated',
+    })),
+    hash: vi.fn((key: string) => `hashed:${key}`),
+  };
+  const services: Record<string, unknown> = {
+    'admin::api-token': apiToken,
+  };
 
   const strapi = {
     log,
     config: { get: vi.fn() },
+    service: (uid: string) => services[uid],
+    contentType: (uid: string) =>
+      uid === 'admin::api-token'
+        ? { attributes: { name: {}, ...(tokenKind && { kind: {} }) } }
+        : undefined,
     admin: { services: { user: firstAdmin ? user : { create: user.create }, role } },
     db: {
       query: (uid: string) => ({
@@ -55,7 +72,7 @@ const makeStrapi = ({ users = 0, firstAdmin = true } = {}) => {
     },
   };
 
-  return { strapi: strapi as unknown as Strapi, user, role, log, state };
+  return { strapi: strapi as unknown as Strapi, user, role, apiToken, log, state };
 };
 
 describe('seeder', () => {
@@ -148,6 +165,40 @@ describe('seeder extra admins', () => {
 
     expect(ctx.user.create).not.toHaveBeenCalled();
     expect(ctx.log.error).toHaveBeenCalledWith(expect.stringContaining('none of its roles exist'));
+  });
+});
+
+/** Seeds `config` on top of the base config, with an admin already in place. */
+const seed = (ctx: ReturnType<typeof makeStrapi>, config: Partial<PluginConfig>) =>
+  createSeeder(ctx.strapi, { NODE_ENV: 'development' }).run(baseConfig(config));
+
+describe('seeder API tokens', () => {
+  it('creates content API tokens when Strapi knows token kinds', async () => {
+    const ctx = makeStrapi({ users: 1 });
+    await seed(ctx, { apiTokens: [{ name: 'ci', type: 'read-only' }] });
+
+    expect(ctx.apiToken.create).toHaveBeenCalledWith({
+      name: 'ci',
+      description: '',
+      type: 'read-only',
+      lifespan: null,
+      kind: 'content-api',
+    });
+  });
+
+  it('leaves out the kind on Strapi versions without it', async () => {
+    const ctx = makeStrapi({ users: 1, tokenKind: false });
+    await seed(ctx, { apiTokens: [{ name: 'ci', type: 'full-access' }] });
+
+    expect(ctx.apiToken.create.mock.calls[0]![0]).not.toHaveProperty('kind');
+  });
+
+  it('skips tokens that already exist', async () => {
+    const ctx = makeStrapi({ users: 1 });
+    ctx.apiToken.exists.mockResolvedValueOnce(true);
+    await seed(ctx, { apiTokens: [{ name: 'ci', type: 'read-only' }] });
+
+    expect(ctx.apiToken.create).not.toHaveBeenCalled();
   });
 });
 

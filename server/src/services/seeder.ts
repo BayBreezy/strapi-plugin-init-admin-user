@@ -155,12 +155,19 @@ export const createSeeder = (strapi: Strapi, env: Env = process.env) => {
     const tokens = strapi.service('admin::api-token') as any;
     if (await tokens.exists({ name: token.name })) return;
 
+    // Newer Strapi versions also have admin tokens and treat a token without a `kind` as one.
+    const hasKind = Boolean(
+      (strapi.contentType('admin::api-token') as { attributes?: Record<string, unknown> })
+        ?.attributes?.kind,
+    );
+
     try {
       const created = await tokens.create({
         name: token.name,
         description: token.description ?? '',
         type: token.type,
         lifespan: token.lifespan ?? null,
+        ...(hasKind && { kind: 'content-api' }),
       });
 
       if (token.accessKey) {
