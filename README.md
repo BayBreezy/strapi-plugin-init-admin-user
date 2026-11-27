@@ -1,3 +1,5 @@
+<img src="docs/images/logo-512.png" alt="Init Admin User logo" width="112" height="112" />
+
 # @baybreezy/strapi-plugin-init-admin-user
 
 Creates a Strapi admin user on startup, along with any extra admins, roles and API tokens you need. Simplifies working with multiple Strapi environments.
