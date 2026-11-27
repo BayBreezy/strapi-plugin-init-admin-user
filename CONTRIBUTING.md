@@ -27,8 +27,8 @@ major. The workflow needs an `NPM_TOKEN` repository secret.
 ## Trying the plugin in a Strapi app
 
 ```bash
-bun run watch:link                                               # in this repo
-npx yalc add --link strapi-plugin-init-admin-user && npm install # in your Strapi app
+bun run watch:link                                                          # in this repo
+npx yalc add --link @baybreezy/strapi-plugin-init-admin-user && npm install # in your Strapi app
 INIT_ADMIN=true npm run develop
 ```
 
@@ -36,4 +36,4 @@ INIT_ADMIN=true npm run develop
 
 ## Branches
 
-- `main`: Strapi v5 (2.x). Strapi v4 users stay on 0.2.x.
+- `main`: Strapi v5 (1.x). Strapi v4 users stay on the original `strapi-plugin-init-admin-user@0.2.x`.

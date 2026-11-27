@@ -1,6 +1,6 @@
 {
-  "name": "strapi-plugin-init-admin-user",
-  "version": "2.0.0",
+  "name": "@baybreezy/strapi-plugin-init-admin-user",
+  "version": "1.0.0",
   "description": "Creates a strapi admin user on startup. Simplifies working with multiple strapi environments.",
   "keywords": [
     "strapi",
@@ -13,23 +13,28 @@
     "strapi-plugin",
     "strapi-admin",
     "init-admin",
-    "minzig"
+    "strapi-v5",
+    "seed",
+    "api-token"
   ],
-  "homepage": "https://github.com/minzig/strapi-plugin-init-admin-user#readme",
+  "homepage": "https://github.com/BayBreezy/strapi-plugin-init-admin-user#readme",
   "bugs": {
-    "url": "https://github.com/minzig/strapi-plugin-init-admin-user/issues"
+    "url": "https://github.com/BayBreezy/strapi-plugin-init-admin-user/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/minzig/strapi-plugin-init-admin-user.git"
+    "url": "git+https://github.com/BayBreezy/strapi-plugin-init-admin-user.git"
   },
   "license": "MIT",
   "author": {
-    "name": "minzig (https://github.com/minzig)"
+    "name": "Behon Baker",
+    "email": "dev@behonbaker.com",
+    "url": "https://github.com/BayBreezy"
   },
-  "maintainers": [
+  "contributors": [
     {
-      "name": "minzig (https://github.com/minzig)"
+      "name": "minzig",
+      "url": "https://github.com/minzig"
     }
   ],
   "exports": {
@@ -86,6 +91,10 @@
   "engines": {
     "node": ">=20.0.0",
     "npm": ">=6.0.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   },
   "strapi": {
     "kind": "plugin",
