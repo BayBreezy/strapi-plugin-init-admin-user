@@ -8,25 +8,28 @@ permissions:
   contents: write
   issues: write
   pull-requests: write
-  id-token: write
+  id-token: write # npm trusted publishing (OIDC), which also generates provenance
 
 jobs:
   release:
+    # trusted publishing only works on GitHub-hosted runners
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           persist-credentials: false
       - uses: oven-sh/setup-bun@v2
-      - uses: actions/setup-node@v4
+      # no registry-url: it writes an .npmrc that expects a token
+      - uses: actions/setup-node@v7
         with:
-          node-version: 22
-          registry-url: https://registry.npmjs.org
+          node-version: 24
       - run: bun install --frozen-lockfile
       - run: bun run build
       - run: bun run verify
       - run: bunx semantic-release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Only a fallback for the very first release, before the package exists on npm and a
+          # trusted publisher can be configured. Delete the secret once trusted publishing works.
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

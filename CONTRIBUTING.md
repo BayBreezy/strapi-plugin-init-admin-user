@@ -22,7 +22,11 @@ A commit-msg hook (commitlint) checks the format locally, and CI checks the PR t
 
 Releases are generated from the commits by [semantic-release](https://semantic-release.gitbook.io) when
 something lands on `main`: `feat:` is a minor release, `fix:` a patch and a `BREAKING CHANGE:` footer a
-major. The workflow needs an `NPM_TOKEN` repository secret.
+major.
+
+Publishing uses [npm trusted publishing](https://docs.npmjs.com/trusted-publishers) (OIDC), so no npm
+token is stored in the repository and provenance is generated automatically. The package's trusted
+publisher on npmjs.com is `BayBreezy` / `strapi-plugin-init-admin-user` / `release.yml`.
 
 ## Trying the plugin in a Strapi app
 
