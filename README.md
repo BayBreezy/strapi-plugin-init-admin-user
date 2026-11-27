@@ -1,21 +1,29 @@
-# strapi-plugin-init-admin-user
+# @baybreezy/strapi-plugin-init-admin-user
 
-Creates a Strapi admin user on startup. Simplifies working with multiple Strapi environments.
+Creates a Strapi admin user on startup, along with any extra admins, roles and API tokens you need. Simplifies working with multiple Strapi environments.
 
 <img src="docs/images/strapi-plugin-init-admin-user-env.png" alt="Init Admin Example Variables" />
 
+## About this fork
+
+This is a maintained fork of [minzig/strapi-plugin-init-admin-user](https://github.com/minzig/strapi-plugin-init-admin-user), created by [minzig](https://github.com/minzig). Credit for the original plugin and idea goes to them.
+
+Strapi v5 support (a TypeScript rewrite on the Strapi Plugin SDK) and the tooling around it were sent upstream as [#15](https://github.com/minzig/strapi-plugin-init-admin-user/pull/15) and [#16](https://github.com/minzig/strapi-plugin-init-admin-user/pull/16) in October 2026. Those pull requests haven't had a response yet, and the original repository and npm package haven't been updated since November 2023. So that Strapi v5 users can use the plugin today, it's published here as `@baybreezy/strapi-plugin-init-admin-user`.
+
+The plugin id, configuration and environment variables are the same as the original, so switching is a package swap (see [Migrating](#migrating-from-strapi-plugin-init-admin-user)). If the original project becomes active again, the plan is to contribute these changes back.
+
 ## Compatibility
 
-| Plugin | Strapi | Node    |
-| ------ | ------ | ------- |
-| 2.x    | v5     | 20+     |
-| 0.2.x  | v4     | 14 - 20 |
+| Package                                    | Version | Strapi | Node    |
+| ------------------------------------------ | ------- | ------ | ------- |
+| `@baybreezy/strapi-plugin-init-admin-user` | 1.x     | v5     | 20+     |
+| `strapi-plugin-init-admin-user` (original) | 0.2.x   | v4     | 14 - 20 |
 
 ```bash
 # Strapi v5
-npm install strapi-plugin-init-admin-user
+npm install @baybreezy/strapi-plugin-init-admin-user
 
-# Strapi v4
+# Strapi v4 (original package)
 npm install strapi-plugin-init-admin-user@0.2.3
 ```
 
@@ -55,7 +63,7 @@ Watch for the `info` log:
 
 ## Configuration
 
-Everything above also works from `config/plugins.ts`. Values set there win over the environment variables.
+Everything above also works from `config/plugins.ts`. Values set there win over the environment variables. The plugin key is `strapi-plugin-init-admin-user`, the same as the original package.
 
 ```ts
 export default ({ env }) => ({
@@ -74,8 +82,17 @@ export default ({ env }) => ({
         lastname: 'Admin',
       },
 
-      // roles are created first, and only if they don't exist yet (no permissions are assigned)
-      roles: [{ name: 'QA', code: 'qa', description: 'Quality assurance' }],
+      // roles are created first, and only if they don't exist yet
+      // permissions are applied only when the role is created
+      roles: [
+        {
+          name: 'QA',
+          code: 'qa',
+          description: 'Quality assurance',
+          copyPermissionsFrom: 'strapi-editor',
+          permissions: ['plugin::upload.read'],
+        },
+      ],
 
       // more admins, created when no admin with that email exists
       // `roles` is required, and takes role codes or names
@@ -89,13 +106,39 @@ export default ({ env }) => ({
       ],
 
       // content API tokens, created when no token with that name exists
-      apiTokens: [{ name: 'ci', type: 'read-only' }],
+      apiTokens: [
+        { name: 'ci', type: 'read-only' },
+        { name: 'frontend', type: 'custom', permissions: ['api::article.article.find'] },
+      ],
     },
   },
 });
 ```
 
 `admins`, `roles` and `apiTokens` can also be provided as JSON arrays through `INIT_ADMINS`, `INIT_ROLES` and `INIT_API_TOKENS`.
+
+### Role permissions
+
+A role created by the plugin can start with permissions:
+
+- `copyPermissionsFrom` copies every permission of an existing role, by code or name (for example `strapi-editor` or `strapi-author`).
+- `permissions` adds permissions on top. A string is an action (`'plugin::upload.read'`). Use an object for content-type actions: `{ action: 'plugin::content-manager.explorer.read', subject: 'api::article.article' }`.
+
+```
+INIT_ROLES='[{"name": "QA", "code": "qa", "copyPermissionsFrom": "strapi-editor"}]'
+```
+
+Permissions are only applied when the plugin **creates** the role. A role that already exists is never changed, so edits made in the admin panel are kept.
+
+### Custom API tokens
+
+Besides `read-only` and `full-access`, tokens can be `custom`. A custom token is limited to the content API actions listed in `permissions`:
+
+```
+INIT_API_TOKENS='[{"name": "frontend", "type": "custom", "permissions": ["api::article.article.find", "api::article.article.findOne"]}]'
+```
+
+Actions follow Strapi's `api::<api>.<controller>.<action>` / `plugin::<plugin>.<controller>.<action>` format. Unknown actions are rejected by Strapi and logged.
 
 ### Secrets from files
 
@@ -105,9 +148,9 @@ Every `INIT_ADMIN_*` variable (and `INIT_ADMINS`, `INIT_ROLES`, `INIT_API_TOKENS
 INIT_ADMIN_PASSWORD_FILE=/run/secrets/strapi_admin_password
 ```
 
-### API tokens
+### API token access keys
 
-Without an `accessKey` the generated token is printed **once** in the log. Setting `accessKey` stores your own value instead. This relies on how Strapi stores token keys internally, so test it with your Strapi version before depending on it.
+Without an `accessKey` the generated token is printed **once** in the log. Setting `accessKey` stores your own value instead, for any token type. This relies on how Strapi stores token keys internally, so test it with your Strapi version before depending on it.
 
 ## Security
 
@@ -115,27 +158,29 @@ Without an `accessKey` the generated token is printed **once** in the log. Setti
 - It also warns when the password doesn't meet Strapi's password policy (8+ characters, a lowercase letter, an uppercase letter and a number).
 - Passwords are never logged.
 - `admins` and `roles` are re-created on every start if you delete them. Remove them from the configuration once you no longer need them.
+- Role permissions are applied only when a role is created, never to existing roles.
 
-## Upgrading from 0.x
+## Migrating from `strapi-plugin-init-admin-user`
 
-- 2.x supports Strapi v5 only. Stay on `strapi-plugin-init-admin-user@0.2.3` for Strapi v4.
-- The environment variables are unchanged.
+```bash
+npm uninstall strapi-plugin-init-admin-user
+npm install @baybreezy/strapi-plugin-init-admin-user
+```
+
+- 1.x supports Strapi v5 only. Stay on `strapi-plugin-init-admin-user@0.2.3` for Strapi v4.
+- The plugin key in `config/plugins.ts` (`strapi-plugin-init-admin-user`) and the environment variables are unchanged.
 - The default `admin` password is still accepted, but now logs a warning.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md).
-
-## Support
-
-Leave a '**Thank You**' with a ⭐️ on [Github](https://github.com/minzig/strapi-plugin-init-admin-user) and have a nice day!
+See [CONTRIBUTING.md](CONTRIBUTING.md). Issues and pull requests are welcome on [GitHub](https://github.com/BayBreezy/strapi-plugin-init-admin-user).
 
 ## Links
 
-[Plugin on Github](https://github.com/minzig/strapi-plugin-init-admin-user)  
-[Plugin on NPM](https://www.npmjs.com/package/strapi-plugin-init-admin-user)  
-[Plugin on Strapi Marketplace](https://market.strapi.io/plugins/strapi-plugin-init-admin-user)
+[Plugin on GitHub](https://github.com/BayBreezy/strapi-plugin-init-admin-user)  
+[Plugin on npm](https://www.npmjs.com/package/@baybreezy/strapi-plugin-init-admin-user)  
+[Original project by minzig](https://github.com/minzig/strapi-plugin-init-admin-user)
 
 ## License
 
-[MIT License](LICENSE) - Created by [minzig](https://github.com/minzig)🍃
+[MIT License](LICENSE). Originally created by [minzig](https://github.com/minzig)🍃, maintained by [Behon Baker](https://github.com/BayBreezy).
