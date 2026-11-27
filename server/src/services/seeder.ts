@@ -231,6 +231,7 @@ export const createSeeder = (strapi: Strapi, env: Env = process.env) => {
         type: token.type,
         lifespan: token.lifespan ?? null,
         ...(hasKind && { kind: 'content-api' }),
+        ...(token.type === 'custom' && { permissions: token.permissions ?? [] }),
       });
 
       if (token.accessKey) {

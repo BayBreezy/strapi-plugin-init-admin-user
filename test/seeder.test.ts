@@ -273,6 +273,18 @@ describe('seeder API tokens', () => {
     expect(ctx.apiToken.create.mock.calls[0]![0]).not.toHaveProperty('kind');
   });
 
+  it('passes the permissions of custom tokens', async () => {
+    const ctx = makeStrapi({ users: 1 });
+    await seed(ctx, {
+      apiTokens: [{ name: 'ci', type: 'custom', permissions: ['api::article.article.find'] }],
+    });
+
+    expect(ctx.apiToken.create).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'custom', permissions: ['api::article.article.find'] }),
+    );
+    expect(ctx.log.info).toHaveBeenCalledWith('Created API token "ci": generated');
+  });
+
   it('skips tokens that already exist', async () => {
     const ctx = makeStrapi({ users: 1 });
     ctx.apiToken.exists.mockResolvedValueOnce(true);

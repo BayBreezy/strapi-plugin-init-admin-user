@@ -48,10 +48,14 @@ export interface RoleInput {
   permissions?: PermissionInput[];
 }
 
+export type ApiTokenType = 'read-only' | 'full-access' | 'custom';
+
 export interface ApiTokenInput {
   name: string;
   description?: string;
-  type: 'read-only' | 'full-access';
+  type: ApiTokenType;
+  /** Content API actions for `custom` tokens, e.g. `api::article.article.find`. */
+  permissions?: string[];
   /** Lifespan in milliseconds, `null` for unlimited. */
   lifespan?: number | null;
   /** Fixed access key (for CI). Needs Strapi internals, see README. */

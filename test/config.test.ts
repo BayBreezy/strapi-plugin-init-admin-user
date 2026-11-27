@@ -27,10 +27,40 @@ describe('config validator', () => {
     ).toThrow(/admins\[0\]\.roles/);
   });
 
-  it('only allows read-only or full-access API tokens', () => {
+  it('rejects unknown API token types', () => {
+    expect(() =>
+      config.validator({ ...valid(), apiTokens: [{ name: 'ci', type: 'admin' }] }),
+    ).toThrow(/apiTokens\[0\]\.type/);
+  });
+
+  it('requires permissions on custom API tokens', () => {
     expect(() =>
       config.validator({ ...valid(), apiTokens: [{ name: 'ci', type: 'custom' }] }),
-    ).toThrow(/apiTokens\[0\]\.type/);
+    ).toThrow(/apiTokens\[0\]\.permissions/);
+    expect(() =>
+      config.validator({
+        ...valid(),
+        apiTokens: [{ name: 'ci', type: 'custom', permissions: [42] }],
+      }),
+    ).toThrow(/action strings/);
+  });
+
+  it('accepts custom API tokens with permissions', () => {
+    expect(() =>
+      config.validator({
+        ...valid(),
+        apiTokens: [{ name: 'ci', type: 'custom', permissions: ['api::article.article.find'] }],
+      }),
+    ).not.toThrow();
+  });
+
+  it('rejects permissions on non-custom API tokens', () => {
+    expect(() =>
+      config.validator({
+        ...valid(),
+        apiTokens: [{ name: 'ci', type: 'read-only', permissions: ['api::article.article.find'] }],
+      }),
+    ).toThrow(/only allowed on custom tokens/);
   });
 
   it('accepts role permissions as strings or objects', () => {

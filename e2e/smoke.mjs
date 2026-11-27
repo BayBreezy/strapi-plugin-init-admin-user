@@ -33,9 +33,9 @@ const adminPermissions = async (email, password) => {
   return (await res.json()).data ?? [];
 };
 
-const apiStatus = async (token) =>
+const apiStatus = async (token, path = '/api/users-permissions/roles') =>
   (
-    await fetch(`http://localhost:${port}/api/users-permissions/roles`, {
+    await fetch(`http://localhost:${port}${path}`, {
       headers: { authorization: `Bearer ${token}` },
     })
   ).status;
@@ -147,6 +147,12 @@ try {
     INIT_ROLES: JSON.stringify([{ name: 'QA', code: 'qa', copyPermissionsFrom: 'strapi-editor' }]),
     INIT_API_TOKENS: JSON.stringify([
       { name: 'e2e', type: 'read-only', accessKey: 'e2e-fixed-token' },
+      {
+        name: 'e2e-custom',
+        type: 'custom',
+        permissions: ['plugin::users-permissions.role.find'],
+        accessKey: 'e2e-custom-token',
+      },
     ]),
   };
 
@@ -172,6 +178,21 @@ try {
       .join('\n'),
   );
   assert((await apiStatus('wrong-token')) === 401, 'a wrong API token is rejected');
+  assert(
+    (await apiStatus('e2e-custom-token')) === 200,
+    'custom API token can use its permitted action',
+  );
+  // role.findOne is not in the token's permissions (only role.find is)
+  const deniedStatus = await apiStatus('e2e-custom-token', '/api/users-permissions/roles/1');
+  // Strapi 5.0.0 denies the request with a ForbiddenError but answers 500 instead of 403
+  const forbidden =
+    deniedStatus === 403 ||
+    (deniedStatus === 500 && strapi.logs().includes('ForbiddenError: Forbidden access'));
+  assert(
+    forbidden,
+    'custom API token is denied other actions',
+    `GET /api/users-permissions/roles/1 returned ${deniedStatus}`,
+  );
   const editorPermissions = await adminPermissions('editor@example.com', 'Editor1234');
   const qaPermissions = await adminPermissions('qa@example.com', 'QaPass1234');
   assert(

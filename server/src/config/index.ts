@@ -1,7 +1,8 @@
 import { adminFromEnv, adminsFromEnv, apiTokensFromEnv, rolesFromEnv } from '../lib/env';
-import type { Mode, PluginConfig } from '../lib/types';
+import type { ApiTokenType, Mode, PluginConfig } from '../lib/types';
 
 const MODES: Mode[] = ['auto', 'always', 'never'];
+const TOKEN_TYPES: ApiTokenType[] = ['read-only', 'full-access', 'custom'];
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -41,6 +42,24 @@ const assertRolePermissions = (role: Record<string, unknown>, path: string) => {
   });
 };
 
+const assertApiToken = (token: Record<string, unknown>, path: string) => {
+  if (!TOKEN_TYPES.includes(token.type as ApiTokenType)) {
+    throw new Error(`"${path}.type" must be one of: ${TOKEN_TYPES.join(', ')}`);
+  }
+
+  if (token.type === 'custom') {
+    const { permissions } = token;
+    if (!Array.isArray(permissions) || permissions.length === 0) {
+      throw new Error(`"${path}.permissions" needs at least one action for a custom token`);
+    }
+    if (!permissions.every(isNonEmptyString)) {
+      throw new Error(`"${path}.permissions" must only contain action strings`);
+    }
+  } else if (token.permissions !== undefined) {
+    throw new Error(`"${path}.permissions" is only allowed on custom tokens`);
+  }
+};
+
 export default {
   default: (): PluginConfig => ({
     mode: 'auto',
@@ -69,11 +88,8 @@ export default {
     }
 
     assertEntries(config.apiTokens as unknown[], 'apiTokens', ['name', 'type']);
-
-    for (const [index, token] of (config.apiTokens as { type: string }[]).entries()) {
-      if (token.type !== 'read-only' && token.type !== 'full-access') {
-        throw new Error(`"apiTokens[${index}].type" must be "read-only" or "full-access"`);
-      }
+    for (const [index, token] of (config.apiTokens as Record<string, unknown>[]).entries()) {
+      assertApiToken(token, `apiTokens[${index}]`);
     }
   },
 };
