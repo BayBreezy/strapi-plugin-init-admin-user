@@ -32,6 +32,33 @@ describe('config validator', () => {
       config.validator({ ...valid(), apiTokens: [{ name: 'ci', type: 'custom' }] }),
     ).toThrow(/apiTokens\[0\]\.type/);
   });
+
+  it('accepts role permissions as strings or objects', () => {
+    expect(() =>
+      config.validator({
+        ...valid(),
+        roles: [
+          {
+            name: 'QA',
+            copyPermissionsFrom: 'strapi-editor',
+            permissions: ['plugin::upload.read', { action: 'plugin::upload.assets.create' }],
+          },
+        ],
+      }),
+    ).not.toThrow();
+  });
+
+  it('rejects malformed role permissions', () => {
+    expect(() =>
+      config.validator({ ...valid(), roles: [{ name: 'QA', permissions: [{ subject: 'x' }] }] }),
+    ).toThrow(/roles\[0\]\.permissions\[0\]/);
+    expect(() =>
+      config.validator({ ...valid(), roles: [{ name: 'QA', permissions: 'plugin::upload.read' }] }),
+    ).toThrow(/must be an array/);
+    expect(() =>
+      config.validator({ ...valid(), roles: [{ name: 'QA', copyPermissionsFrom: '' }] }),
+    ).toThrow(/copyPermissionsFrom/);
+  });
 });
 
 describe('passwordPolicyViolations', () => {

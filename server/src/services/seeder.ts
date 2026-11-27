@@ -2,6 +2,7 @@ import { DEFAULT_ADMIN, readEnv, type Env } from '../lib/env';
 import { passwordPolicyViolations } from '../lib/password';
 import { redact } from '../lib/redact';
 import type {
+  AdminPermission,
   AdminRole,
   AdminServices,
   ApiTokenInput,
@@ -14,6 +15,21 @@ import type {
 const SUPER_ADMIN_CODE = 'strapi-super-admin';
 
 const errorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
+/** Keeps only the fields Strapi compares and stores (drops ids, the role relation, timestamps). */
+const toAdminPermission = ({
+  action,
+  actionParameters,
+  subject,
+  properties,
+  conditions,
+}: AdminPermission): AdminPermission => ({
+  action,
+  ...(actionParameters !== undefined && { actionParameters }),
+  subject: subject ?? null,
+  properties: properties ?? {},
+  conditions: conditions ?? [],
+});
 
 export const createSeeder = (strapi: Strapi, env: Env = process.env) => {
   const admin = (): AdminServices =>
@@ -37,13 +53,16 @@ export const createSeeder = (strapi: Strapi, env: Env = process.env) => {
     });
   };
 
+  const findRole = (codeOrName: string) =>
+    query('admin::role').findOne({
+      where: { $or: [{ code: codeOrName }, { name: codeOrName }] },
+    }) as Promise<AdminRole | null>;
+
   /** Resolves role codes or names to ids. Unknown roles are reported and skipped. */
   const resolveRoleIds = async (roles: string[]): Promise<(number | string)[]> => {
     const ids: (number | string)[] = [];
     for (const role of roles) {
-      const found = await query('admin::role').findOne({
-        where: { $or: [{ code: role }, { name: role }] },
-      });
+      const found = await findRole(role);
       if (found) ids.push(found.id);
       else strapi.log.warn(`Role "${role}" not found, skipping it.`);
     }
@@ -68,6 +87,32 @@ export const createSeeder = (strapi: Strapi, env: Env = process.env) => {
     }
   };
 
+  /** The permissions of `role` (from `copyPermissionsFrom` and `permissions`), ready to assign. */
+  const collectPermissions = async (role: RoleInput): Promise<AdminPermission[]> => {
+    const collected: AdminPermission[] = [];
+
+    if (role.copyPermissionsFrom) {
+      const source = await findRole(role.copyPermissionsFrom);
+      if (!source) {
+        strapi.log.warn(
+          `Role "${role.copyPermissionsFrom}" not found, so no permissions were copied to "${role.name}".`,
+        );
+      } else {
+        const permissions = (await strapi
+          .service('admin::permission')
+          .findMany({ where: { role: { id: source.id } } })) as AdminPermission[];
+        collected.push(...permissions.map(toAdminPermission));
+      }
+    }
+
+    for (const permission of role.permissions ?? []) {
+      collected.push(
+        toAdminPermission(typeof permission === 'string' ? { action: permission } : permission),
+      );
+    }
+    return collected;
+  };
+
   const seedRoles = async (roles: RoleInput[]) => {
     for (const role of roles) {
       const exists = await query('admin::role').findOne({
@@ -75,11 +120,29 @@ export const createSeeder = (strapi: Strapi, env: Env = process.env) => {
       });
       if (exists) continue;
 
+      const { copyPermissionsFrom: _copy, permissions: _permissions, ...attributes } = role;
+      let created: AdminRole;
       try {
-        await admin().role.create(role);
-        strapi.log.info(`Created role "${role.name}".`);
+        created = await admin().role.create(attributes);
       } catch (error) {
         strapi.log.error(`Couldn't create role "${role.name}": ${errorMessage(error)}`);
+        continue;
+      }
+
+      // Permissions are only assigned to roles created here, so changes made in the admin
+      // panel are never overwritten.
+      try {
+        const permissions = await collectPermissions(role);
+        if (permissions.length > 0) {
+          await admin().role.assignPermissions(created.id, permissions);
+          strapi.log.info(`Created role "${role.name}" with ${permissions.length} permissions.`);
+        } else {
+          strapi.log.info(`Created role "${role.name}".`);
+        }
+      } catch (error) {
+        strapi.log.error(
+          `Created role "${role.name}", but couldn't assign its permissions: ${errorMessage(error)}`,
+        );
       }
     }
   };

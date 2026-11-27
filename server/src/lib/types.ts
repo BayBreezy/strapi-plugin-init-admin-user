@@ -28,10 +28,24 @@ export interface ExtraAdmin {
   [key: string]: unknown;
 }
 
+/** An admin permission. A plain string is shorthand for `{ action }`. */
+export type PermissionInput =
+  | string
+  | {
+      action: string;
+      subject?: string | null;
+      properties?: Record<string, unknown>;
+      conditions?: string[];
+    };
+
 export interface RoleInput {
   name: string;
   code?: string;
   description?: string;
+  /** Code or name of an existing role whose permissions are copied when this role is created. */
+  copyPermissionsFrom?: string;
+  /** Permissions assigned when this role is created (on top of `copyPermissionsFrom`). */
+  permissions?: PermissionInput[];
 }
 
 export interface ApiTokenInput {
@@ -68,5 +82,15 @@ export interface AdminServices {
     createRolesIfNoneExist(): Promise<void>;
     getSuperAdmin(): Promise<AdminRole | undefined | null>;
     create(attributes: Partial<AdminRole> & { description?: string }): Promise<AdminRole>;
+    assignPermissions(roleId: AdminRole['id'], permissions: AdminPermission[]): Promise<unknown>;
   };
+}
+
+/** A permission as Strapi's role service expects it. */
+export interface AdminPermission {
+  action: string;
+  actionParameters?: Record<string, unknown>;
+  subject?: string | null;
+  properties?: Record<string, unknown>;
+  conditions?: string[];
 }

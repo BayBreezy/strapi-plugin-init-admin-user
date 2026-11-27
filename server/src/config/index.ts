@@ -21,6 +21,26 @@ const assertEntries = (list: unknown[], key: string, required: string[]) => {
   });
 };
 
+const isNonEmptyString = (value: unknown): value is string =>
+  typeof value === 'string' && value.length > 0;
+
+const assertRolePermissions = (role: Record<string, unknown>, path: string) => {
+  if (role.copyPermissionsFrom !== undefined && !isNonEmptyString(role.copyPermissionsFrom)) {
+    throw new Error(`"${path}.copyPermissionsFrom" must be a role code or name`);
+  }
+  if (role.permissions === undefined) return;
+  if (!Array.isArray(role.permissions)) throw new Error(`"${path}.permissions" must be an array`);
+
+  role.permissions.forEach((permission: unknown, index) => {
+    const action = isObject(permission) ? permission.action : permission;
+    if (!isNonEmptyString(action)) {
+      throw new Error(
+        `"${path}.permissions[${index}]" must be an action string or an object with an "action"`,
+      );
+    }
+  });
+};
+
 export default {
   default: (): PluginConfig => ({
     mode: 'auto',
@@ -44,6 +64,10 @@ export default {
       }
     }
     assertEntries(config.roles as unknown[], 'roles', ['name']);
+    for (const [index, role] of (config.roles as Record<string, unknown>[]).entries()) {
+      assertRolePermissions(role, `roles[${index}]`);
+    }
+
     assertEntries(config.apiTokens as unknown[], 'apiTokens', ['name', 'type']);
 
     for (const [index, token] of (config.apiTokens as { type: string }[]).entries()) {

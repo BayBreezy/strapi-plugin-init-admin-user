@@ -15,13 +15,22 @@ const app = join(work, 'app');
 
 const run = (cmd, args, cwd) => execFileSync(cmd, args, { cwd, stdio: 'inherit' });
 
-const login = async (email, password) => {
-  const res = await fetch(`http://localhost:${port}/admin/login`, {
+const adminLogin = (email, password) =>
+  fetch(`http://localhost:${port}/admin/login`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ email, password }),
   });
-  return res.status;
+
+const login = async (email, password) => (await adminLogin(email, password)).status;
+
+/** The admin permissions of a user, through the admin API. */
+const adminPermissions = async (email, password) => {
+  const { data } = await (await adminLogin(email, password)).json();
+  const res = await fetch(`http://localhost:${port}/admin/users/me/permissions`, {
+    headers: { authorization: `Bearer ${data.token}` },
+  });
+  return (await res.json()).data ?? [];
 };
 
 const apiStatus = async (token) =>
@@ -128,7 +137,14 @@ try {
         password: 'Editor1234',
         roles: ['strapi-editor'],
       },
+      {
+        email: 'qa@example.com',
+        firstname: 'Q',
+        password: 'QaPass1234',
+        roles: ['qa'],
+      },
     ]),
+    INIT_ROLES: JSON.stringify([{ name: 'QA', code: 'qa', copyPermissionsFrom: 'strapi-editor' }]),
     INIT_API_TOKENS: JSON.stringify([
       { name: 'e2e', type: 'read-only', accessKey: 'e2e-fixed-token' },
     ]),
@@ -156,6 +172,17 @@ try {
       .join('\n'),
   );
   assert((await apiStatus('wrong-token')) === 401, 'a wrong API token is rejected');
+  const editorPermissions = await adminPermissions('editor@example.com', 'Editor1234');
+  const qaPermissions = await adminPermissions('qa@example.com', 'QaPass1234');
+  assert(
+    qaPermissions.length > 0 && qaPermissions.length === editorPermissions.length,
+    'seeded role (INIT_ROLES) copied the editor permissions',
+    `qa: ${qaPermissions.length}, editor: ${editorPermissions.length}\n${strapi
+      .logs()
+      .split('\n')
+      .filter((line) => /role/i.test(line))
+      .join('\n')}`,
+  );
   await stop(strapi.child);
 
   // 2. second boot with other credentials changes nothing

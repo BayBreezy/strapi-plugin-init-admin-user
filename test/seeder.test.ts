@@ -19,6 +19,18 @@ const baseConfig = (overrides: Partial<PluginConfig> = {}): PluginConfig => ({
   ...overrides,
 });
 
+const EDITOR_PERMISSIONS = [
+  {
+    id: 7,
+    action: 'plugin::content-manager.explorer.read',
+    actionParameters: {},
+    subject: 'api::article.article',
+    properties: { fields: ['title'] },
+    conditions: [],
+    role: { id: 2 },
+  },
+];
+
 const makeStrapi = ({ users = 0, firstAdmin = true, tokenKind = true } = {}) => {
   const state = { users, roles: [] as { id: number; name: string; code: string }[] };
   const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
@@ -38,6 +50,12 @@ const makeStrapi = ({ users = 0, firstAdmin = true, tokenKind = true } = {}) => 
       state.roles.push(created);
       return created;
     }),
+    assignPermissions: vi.fn(async () => []),
+  };
+  const permission = {
+    findMany: vi.fn(async ({ where }: { where: { role: { id: number } } }) =>
+      where.role.id === 2 ? EDITOR_PERMISSIONS : [],
+    ),
   };
   const apiToken = {
     exists: vi.fn(async () => false),
@@ -49,6 +67,7 @@ const makeStrapi = ({ users = 0, firstAdmin = true, tokenKind = true } = {}) => 
     hash: vi.fn((key: string) => `hashed:${key}`),
   };
   const services: Record<string, unknown> = {
+    'admin::permission': permission,
     'admin::api-token': apiToken,
   };
 
@@ -66,13 +85,16 @@ const makeStrapi = ({ users = 0, firstAdmin = true, tokenKind = true } = {}) => 
         count: async ({ where }: { where?: { email?: string } } = {}) =>
           uid === 'admin::user' ? (where?.email ? 0 : state.users) : 0,
         findOne: async ({ where }: { where: { $or: Record<string, string>[] } }) =>
-          state.roles.find((r) => where.$or.some((c) => c.name === r.name || c.code === r.code)) ??
-          (where.$or.some((c) => c.code === 'strapi-editor') ? { id: 2 } : null),
+          state.roles.find((r) =>
+            where.$or.some((c) =>
+              Object.entries(c).every(([key, value]) => r[key as 'name' | 'code'] === value),
+            ),
+          ) ?? (where.$or.some((c) => c.code === 'strapi-editor') ? { id: 2 } : null),
       }),
     },
   };
 
-  return { strapi: strapi as unknown as Strapi, user, role, apiToken, log, state };
+  return { strapi: strapi as unknown as Strapi, user, role, permission, apiToken, log, state };
 };
 
 describe('seeder', () => {
@@ -171,6 +193,64 @@ describe('seeder extra admins', () => {
 /** Seeds `config` on top of the base config, with an admin already in place. */
 const seed = (ctx: ReturnType<typeof makeStrapi>, config: Partial<PluginConfig>) =>
   createSeeder(ctx.strapi, { NODE_ENV: 'development' }).run(baseConfig(config));
+
+describe('seeder role permissions', () => {
+  it('copies permissions from another role and adds the listed ones', async () => {
+    const ctx = makeStrapi({ users: 1 });
+    await seed(ctx, {
+      roles: [
+        {
+          name: 'QA',
+          code: 'qa',
+          copyPermissionsFrom: 'strapi-editor',
+          permissions: ['plugin::upload.read', { action: 'plugin::upload.assets.create' }],
+        },
+      ],
+    });
+
+    expect(ctx.role.create).toHaveBeenCalledWith({ name: 'QA', code: 'qa' });
+    expect(ctx.role.assignPermissions).toHaveBeenCalledWith(10, [
+      {
+        action: 'plugin::content-manager.explorer.read',
+        actionParameters: {},
+        subject: 'api::article.article',
+        properties: { fields: ['title'] },
+        conditions: [],
+      },
+      { action: 'plugin::upload.read', subject: null, properties: {}, conditions: [] },
+      { action: 'plugin::upload.assets.create', subject: null, properties: {}, conditions: [] },
+    ]);
+    expect(ctx.log.info).toHaveBeenCalledWith('Created role "QA" with 3 permissions.');
+  });
+
+  it('never touches the permissions of an existing role', async () => {
+    const ctx = makeStrapi({ users: 1 });
+    ctx.state.roles.push({ id: 5, name: 'QA', code: 'qa' });
+    await seed(ctx, { roles: [{ name: 'QA', code: 'qa', permissions: ['plugin::upload.read'] }] });
+
+    expect(ctx.role.create).not.toHaveBeenCalled();
+    expect(ctx.role.assignPermissions).not.toHaveBeenCalled();
+  });
+
+  it('warns and still creates the role when the source role is missing', async () => {
+    const ctx = makeStrapi({ users: 1 });
+    await seed(ctx, { roles: [{ name: 'QA', copyPermissionsFrom: 'nope' }] });
+
+    expect(ctx.role.create).toHaveBeenCalled();
+    expect(ctx.role.assignPermissions).not.toHaveBeenCalled();
+    expect(ctx.log.warn).toHaveBeenCalledWith(expect.stringContaining('Role "nope" not found'));
+  });
+
+  it('logs an error when the permissions are rejected', async () => {
+    const ctx = makeStrapi({ users: 1 });
+    ctx.role.assignPermissions.mockRejectedValueOnce(new Error('Unknown action'));
+    await seed(ctx, { roles: [{ name: 'QA', permissions: ['nope'] }] });
+
+    expect(ctx.log.error).toHaveBeenCalledWith(
+      expect.stringContaining("couldn't assign its permissions: Unknown action"),
+    );
+  });
+});
 
 describe('seeder API tokens', () => {
   it('creates content API tokens when Strapi knows token kinds', async () => {
