@@ -60,6 +60,7 @@ jobs:
   e2e:
     name: E2E (Strapi ${{ matrix.strapi }})
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: build
     strategy:
       fail-fast: false

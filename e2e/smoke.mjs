@@ -40,12 +40,47 @@ const apiStatus = async (token, path = '/api/users-permissions/roles') =>
     })
   ).status;
 
+const isUp = async () => {
+  try {
+    return (await fetch(`http://localhost:${port}/_health`)).status === 204;
+  } catch {
+    return false;
+  }
+};
+
+const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
+
+/** Stops a Strapi started by `startStrapi`, including any processes it spawned. */
+const stop = async (child) => {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  const exited = new Promise((done) => child.once('exit', done));
+  const signal = (name) => {
+    try {
+      process.kill(-child.pid, name); // the whole process group
+    } catch {
+      // already gone
+    }
+  };
+  signal('SIGTERM');
+  const timer = setTimeout(() => signal('SIGKILL'), 15_000);
+  await exited;
+  clearTimeout(timer);
+  for (let attempt = 0; attempt < 30 && (await isUp()); attempt++) await sleep(500);
+};
+
+const running = new Set();
+
 const startStrapi = async (env) => {
+  // a Strapi that is still running would answer the health check instead of the new one
+  if (await isUp()) throw new Error(`Port ${port} is still in use by an earlier Strapi`);
+
   const logs = [];
   // the scaffold leaves DATABASE_FILENAME empty, which breaks sqlite
   mkdirSync(join(app, '.tmp'), { recursive: true });
-  const child = spawn('npx', ['strapi', 'start'], {
+  // run the binary directly (npx doesn't forward signals) in its own process group
+  const child = spawn(join(app, 'node_modules', '.bin', 'strapi'), ['start'], {
     cwd: app,
+    detached: true,
     env: {
       ...process.env,
       NODE_ENV: 'production',
@@ -55,28 +90,19 @@ const startStrapi = async (env) => {
       ...env,
     },
   });
+  running.add(child);
+  child.once('exit', () => running.delete(child));
   child.stdout.on('data', (chunk) => logs.push(String(chunk)));
   child.stderr.on('data', (chunk) => logs.push(String(chunk)));
 
   for (let attempt = 0; attempt < 90; attempt++) {
-    try {
-      if ((await fetch(`http://localhost:${port}/_health`)).status === 204) {
-        return { child, logs: () => logs.join('') };
-      }
-    } catch {
-      // not up yet
-    }
-    await new Promise((done) => setTimeout(done, 1000));
+    if (child.exitCode !== null) break;
+    if (await isUp()) return { child, logs: () => logs.join('') };
+    await sleep(1000);
   }
-  child.kill();
+  await stop(child);
   throw new Error(`Strapi did not start:\n${logs.join('')}`);
 };
-
-const stop = (child) =>
-  new Promise((done) => {
-    child.once('exit', done);
-    child.kill('SIGTERM');
-  });
 
 const assert = (condition, message, details = '') => {
   if (!condition) throw new Error(`FAILED: ${message}\n${details}`);
@@ -226,5 +252,9 @@ try {
 
   console.log('E2E passed');
 } finally {
+  for (const child of running) await stop(child);
   rmSync(work, { recursive: true, force: true });
 }
+
+// nothing should be left running, but never let a stray handle keep CI waiting
+process.exit(0);
